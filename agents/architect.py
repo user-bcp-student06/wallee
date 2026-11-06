@@ -4,7 +4,7 @@ from crew.llm_config import llm
 
 KEY = 'architect'
 LABEL = 'Arquitecto'
-SPEC_FILE = 'user_story.md'
+SPEC_FILE = 'architect_report.md'
 EXTRACT_CODE = False
 
 INSTRUCTIONS = ("Analiza el Issue, sus criterios de aceptación y las interfaces del producto. "
