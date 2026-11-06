@@ -14,7 +14,9 @@ INSTRUCTIONS = (
     "no cambies alcance ni reglas de negocio sin consultarlo al Product Owner. "
     "Lo externo (identidad, pagos, QR, callbacks) se simula con mocks y no se presenta como integración real. "
     "Si hay un diseño de datos aprobado, úsalo sin rediseñar tablas ni regenerar sus migraciones. "
-    "No uses datos reales ni secretos, y no inventes resultados de ejecución."
+    "No uses datos reales ni secretos, y no inventes resultados de ejecución. "
+    "Si un criterio es ambiguo, márcalo como PENDIENTE y consúltalo al Product Owner en lugar de inventarlo. "
+    "Responde los errores con el código HTTP adecuado y un código de motivo estable."
 )
 agent = Agent(role='AI Engineer 1', goal="Implementar el dominio y el backend NestJS de Wallee según el contrato aprobado.",
               backstory="Eres el ingeniero de dominio y backend del equipo de Wallee: dominas NestJS con TypeScript.", llm=llm,
