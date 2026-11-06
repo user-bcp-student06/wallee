@@ -40,6 +40,12 @@ class QaSecurityContractTests(unittest.TestCase):
                          "Alcance del sprint: descúbrelo", "FUERA DEL ALCANCE DEL SPRINT"):
             self.assertIn(expected, text)
 
+    def test_instructions_are_autonomous_and_say_whom_to_ask(self):
+        text = qa_security.INSTRUCTIONS
+        for expected in ("Autonomía primero", "Pregunta SOLO ante una duda real", "NO te detengas",
+                         "DECISIONES REQUERIDAS", "A quién preguntar", "Product Owner humano", "Architect"):
+            self.assertIn(expected, text)
+
     def test_task_embeds_spec_discovery_and_paths(self):
         task = qa_security.build_task(FEATURE)
         self.assertIs(task.agent, qa_security.agent)
