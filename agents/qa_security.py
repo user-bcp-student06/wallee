@@ -57,20 +57,34 @@ Eres asistente, no decisor: las decisiones críticas las toma el humano.
    tanto trabaja con lo que sí tienes y marca el resto «PENDIENTE DE CONFIRMAR».
 4. Si falta el spec principal, trabaja con el discovery. Si ningún insumo cubre un AC, no lo inventes: márcalo
    «NO PROBABLE — falta insumo» y consulta al PO.
-- Convención de IDs `Wx-ACn-Tm`: T1 = construir (AI Engineer 1/2), T2 = probar el AC (TÚ), T3 = caso de borde
-  (TÚ). Tus casos son los T2/T3; no escribas T1. Nombra cada test con ese ID (ej. "W4-AC2-T2 same key x3").
-  Si falta un ID, propón uno marcado PROPUESTO.
-- Cifras y supuestos (S/ 500 = RN-01, ventana 24 h = RN-02, saldo = RN-18, mapeo del mock RN-08, etiquetas
-  exitoso/fallido/expirado) están PROPUESTO hasta que el humano los confirme (PA-02, PA-04, PA-08, PA-10).
-  Pruébalos y deja constancia de que están «PENDIENTE DE CONFIRMAR».
-- AC parciales: W2-AC6 y W4-AC4 son PARCIAL (la salida de conciliación de W4-AC4 es de W6, stretch). Nunca los
-  marques COMPLETOS. Eventos a verificar: `onboarding_started`, `onboarding_step_completed`,
-  `onboarding_completed` y `payment_succeeded`.
+- Convención de IDs `Wx-ACn-Tm` (o el prefijo de HU que use el spec): T1 = construir (AI Engineer 1/2),
+  T2 = probar el AC (TÚ), T3 = caso de borde (TÚ). Tus casos son los T2/T3; no escribas T1. Nombra cada test con
+  ese ID (ej. "W4-AC2-T2 same key x3"). Si falta un ID, propón uno marcado PROPUESTO.
+- Cuando apliquen a las HU del alcance: las cifras y supuestos (S/ 500 = RN-01, ventana 24 h = RN-02, saldo =
+  RN-18, mapeo del mock RN-08, etiquetas exitoso/fallido/expirado) están PROPUESTO hasta que el humano los
+  confirme (PA-02, PA-04, PA-08, PA-10): pruébalos y deja constancia de «PENDIENTE DE CONFIRMAR».
+- Respeta el estado que declaren el spec y el discovery: un AC marcado PARCIAL (en el discovery: W2-AC6 y W4-AC4)
+  nunca se marca COMPLETO. Verifica los eventos que definan las HU del alcance (en el discovery:
+  `onboarding_started`, `onboarding_step_completed`, `onboarding_completed`, `payment_succeeded`).
 - Las decisiones HITL se consultan al Product Owner humano.
 
-# Casos mínimos por HU (el ID y el texto exacto salen del spec y del discovery)
-Orden: W1 -> W2 -> W4 -> W5. Stretch solo si el PO lo activa: W3 y W6 (si no están activas, decláralas
-«NO EJECUTADO»). Los AC de KPI de negocio (8->3 min, 30%->8%, MAU, CAC) NO se prueban: solo verifica que el evento se emita.
+# Alcance del sprint: descúbrelo, no lo asumas
+El trabajo avanza paso a paso por sprint/HU y el spec puede traer solo 1, 2 o 3 HU. Tu alcance son SOLO las HU y AC
+que aparecen en el spec principal (o, si no los menciona, en el feature recibido). El bloque «INVENTARIO DE
+ALCANCE» te da las HU detectadas; confírmalo contra el spec y el discovery siguiendo estos pasos:
+1. Inventario: lista cada HU, sus AC/CA-n y la fuente (spec, discovery o ambos) en una tabla.
+2. Completa con el discovery solo esas HU: T2/T3, reglas RN, estados, mock y bordes.
+3. Señala discrepancias: AC en el spec sin contraparte en el discovery y viceversa (manda el spec).
+4. Deriva las tareas T2/T3 por AC con las técnicas ISTQB y asígnales prioridad por riesgo.
+5. Las HU del discovery fuera del alcance NO se prueban: decláralas «FUERA DEL ALCANCE DEL SPRINT». Las HU de
+   sprints anteriores que aparezcan en el contexto solo reciben una regresión mínima (smoke), sin reescribir sus casos.
+6. Si no puedes determinar qué HU o AC están en el sprint, o el spec y el discovery se contradicen en el alcance,
+   emite DECISIÓN REQUERIDA al PO; no completes el alcance por tu cuenta.
+
+# Catálogo de referencia del discovery (úsalo solo para las HU que estén en el alcance)
+Los casos de abajo son ejemplos del discovery para derivar T2/T3; no los apliques a HU fuera del alcance ni los
+tomes como lista cerrada. El ID y el texto exacto salen del spec y del discovery. Stretch (W3 y W6) solo si el
+spec lo activa. Los AC de KPI de negocio (8->3 min, 30%->8%, MAU, CAC) NO se prueban: solo verifica que el evento se emita.
 
 W1 Onboarding:
 - AC1-T2 se muestran los pasos y el paso actual.
@@ -133,7 +147,7 @@ Deriva cada caso del spec (el resultado esperado sale del AC/RN, nunca del códi
 - EG (adivinar errores, complemento basado en experiencia): entradas hostiles de SEC-05 (SQL/JS en destino,
   campos extra, nulos, espacios, unicode, números enormes) y concurrencia con la misma clave.
 - Alcance básico por AC: al menos un caso positivo, uno negativo y los límites que apliquen; sin combinatoria
-  completa. Prioriza por riesgo: dinero e idempotencia (W4) primero, luego pago (W2), onboarding (W1) y soporte (W5).
+  completa. Prioriza por riesgo dentro del alcance: dinero e idempotencia primero, luego pago, onboarding y soporte.
 - Cada caso declara: ID `Wx-ACn-Tm`, AC/RN que cubre, técnica (EP/BVA/DT/ST/EG), precondiciones, entrada sintética,
   resultado esperado y prioridad (Alta/Media/Baja). Nombra el test `Wx-ACn-Tm [BVA] monto 500.01 rechazado`.
 - Casos independientes y repetibles, con un solo resultado esperado verificable cada uno. Mantén una matriz de
@@ -205,19 +219,21 @@ confianza de la petición, y la integridad y migración si el spec incluye Datos
 5. Hallazgos con este formato:
    ID: BUG-xx | HU/AC: W4-AC2 | Severidad: Alta/Media/Baja | Dueño: <rol>
    Pasos: ... Esperado: ... Obtenido: (NO EJECUTADO si no hay salida real) ... Evidencia: comando + salida real aportada
-6. Estado por HU (W1, W2, W4, W5; W3 y W6 solo si están activas) como COMPLETA/PARCIAL/NO HECHA, checkpoint
+6. Estado por cada HU del alcance como COMPLETA/PARCIAL/NO HECHA (las HU fuera del alcance solo se listan como
+   «FUERA DEL ALCANCE DEL SPRINT»), checkpoint
    verde/rojo y a quién se reporta (informe de checkpoint), checklist previo al Freeze (README y cobertura
-   W1–W6 honestos, diagrama e instrucciones que funcionan, código en GitHub, tests, evidencia y trade-offs), y aporte a README sección 6 "Evidencia y pruebas" y sección 7 "Trade-offs"
+   de las HU del alcance honestos, diagrama e instrucciones que funcionan, código en GitHub, tests, evidencia y trade-offs), y aporte a README sección 6 "Evidencia y pruebas" y sección 7 "Trade-offs"
    (qué no se probó y deuda conocida).
-Definición de «listo»: cada AC comprometido tiene al menos un test propuesto con su comando y, tras la ejecución
+Definición de «listo» (para las HU del alcance): cada AC tiene al menos un test propuesto con su comando y, tras la ejecución
 de la persona, evidencia real; hay un happy path y un caso borde por HU, guardrails y HITL del Crew están
-cubiertos, y `npm test` y `python -m pytest` corren en un clon limpio. Lo no probado se declara como pendiente.
+cubiertos si el alcance los incluye, y `npm test` y `python -m pytest` corren en un clon limpio. Lo no probado se declara como pendiente.
 """.strip()
 
 agent = Agent(
     role='QA & Security',
-    goal=("Convertir cada criterio de aceptación del spec (W1, W2, W4 y W5) en casos de prueba verificables con "
-          "datos sintéticos, revisar la seguridad (SEC-01..SEC-09) y dejar evidencia trazable, distinguiendo lo "
+    goal=("Descubrir, a partir del spec y del discovery, qué HU y criterios de aceptación entran en el sprint y "
+          "convertirlos en casos de prueba verificables con datos sintéticos, revisar la seguridad "
+          "(SEC-01..SEC-09) y dejar evidencia trazable, distinguiendo lo "
           "ejecutado por la persona de lo propuesto (NO EJECUTADO), sin ejecutar acciones monetarias ni reversos."),
     backstory=("Eres QA & Security Engineer en el hackathon AI Engineering de una wallet de pagos en Perú "
                "(BCP Train-the-Trainers). El jurado valora la calidad de las decisiones y la evidencia real, "
@@ -244,10 +260,12 @@ DISCOVERY_FILES = (
     "03-alcance-hackathon/01-compromiso-y-prioridad.md",
     "05-trazabilidad/01-matriz-trazabilidad.md",
 )
-STORY_FILES = {
-    "W1": "W1-onboarding.md", "W2": "W2-pago-contacto.md", "W3": "W3-pago-qr.md",
-    "W4": "W4-idempotencia.md", "W5": "W5-fallas-reversos.md", "W6": "W6-conciliacion.md",
-}
+STORIES_DIR = "02-producto/historias"
+STORY_MAP = "02-producto/03-mapa-de-historias.md"
+# Prefijo de la HU en el nombre del archivo (W4-idempotencia.md -> W4) y en los AC del spec (W4-AC2).
+STORY_FILE_ID = re.compile(r"^([A-Za-z]{1,3}\d{1,2})-")
+AC_STORY_ID = re.compile(r"\b([A-Za-z]{1,3}\d{1,2})-AC\d+", re.IGNORECASE)
+# Heurística de último recurso cuando ni el spec ni el feature citan una HU por su ID.
 STORY_KEYWORDS = (
     ("W1", ("onboarding", "alta de", "registro de usuario")), ("W3", ("qr",)),
     ("W4", ("idempot",)), ("W5", ("revers", "failure", "falla")),
@@ -293,18 +311,54 @@ def _ambiguous(label: str, paths: list, root: Path) -> str:
             + "). No elijas una por tu cuenta: emite DECISIÓN REQUERIDA al PO.")
 
 
-def story_for(feature: dict) -> str | None:
-    """Detecta la historia Wx del feature por su ID o, si no aparece, por palabras clave."""
-    text = " ".join([str(feature.get("title", "")), str(feature.get("description", "")),
+def feature_text(feature: dict) -> str:
+    return " ".join([str(feature.get("title", "")), str(feature.get("description", "")),
                      " ".join(str(c) for c in feature.get("acceptance_criteria", []) or [])])
-    found = re.search(r"\bW([1-6])\b", text, re.IGNORECASE)
-    if found:
-        return "W" + found.group(1)
-    lowered = text.lower()
+
+
+def available_stories(base: Path) -> dict:
+    """HU que existen en el discovery, según los archivos de la carpeta de historias."""
+    stories = {}
+    folder = base / STORIES_DIR
+    if folder.is_dir():
+        for path in sorted(folder.glob("*.md")):
+            found = STORY_FILE_ID.match(path.name)
+            if found:
+                stories[found.group(1).upper()] = path
+    return stories
+
+
+def stories_in(text: str, known) -> list:
+    """IDs de HU citados en el texto: por sus AC (W4-AC2) o por su ID, si existe en el discovery."""
+    seen = []
+    for match in AC_STORY_ID.finditer(text):
+        seen.append((match.start(), match.group(1).upper()))
+    for story in known:
+        for match in re.finditer(r"\b" + re.escape(story) + r"\b", text, re.IGNORECASE):
+            seen.append((match.start(), story))
+    ordered = []
+    for _, story in sorted(seen):
+        if story not in ordered:
+            ordered.append(story)
+    return ordered
+
+
+def guess_story(feature: dict, known) -> str | None:
+    lowered = feature_text(feature).lower()
     for story, words in STORY_KEYWORDS:
-        if any(word in lowered for word in words):
+        if story in known and any(word in lowered for word in words):
             return story
     return None
+
+
+def scope(feature: dict, spec_text: str, known) -> tuple:
+    """HU del sprint: las del spec; si no hay, las del feature; si no, una heurística (y se confirma con el PO)."""
+    for source, text in (("spec", spec_text), ("feature", feature_text(feature))):
+        stories = stories_in(text, known)
+        if stories:
+            return stories, source
+    guessed = guess_story(feature, known)
+    return ([guessed], "heurística por palabras clave, confirmar con el PO") if guessed else ([], "ninguna")
 
 
 def build_context(feature: dict, root: Path = ROOT) -> str:
@@ -327,24 +381,38 @@ def build_context(feature: dict, root: Path = ROOT) -> str:
     elif "product_owner_report.md" not in found["specs"]:
         notes.append("Falta product_owner_report.md: los criterios (CA-n) del PO no están disponibles; "
                      "pregunta al PO antes de dar un AC por probado.")
-    parts = ["\n\n---\n## SPEC PRINCIPAL (informes aprobados, ubicación detectada por búsqueda)\n"
-             + "\n\n".join(spec_blocks + notes)]
 
-    story = story_for(feature)
-    story_file = "02-producto/historias/" + STORY_FILES[story] if story else "02-producto/03-mapa-de-historias.md"
+    base = found["discovery"][0] if len(found["discovery"]) == 1 else None
+    known = available_stories(base) if base else {}
+    in_scope, origin = scope(feature, "\n".join(spec_blocks), known)
+    outside = [story for story in known if story not in in_scope]
+    inventory = ["\n\n---\n## INVENTARIO DE ALCANCE (detectado por búsqueda; confírmalo)",
+                 "- HU del sprint a probar: " + (", ".join(in_scope) if in_scope else "NO DETERMINADAS")
+                 + " (origen: " + origin + ")"]
+    if not in_scope:
+        inventory.append("- No se pudo determinar qué HU están en el sprint: emite DECISIÓN REQUERIDA al PO "
+                         "y no completes el alcance por tu cuenta.")
+    if known:
+        inventory.append("- HU existentes en el discovery: " + ", ".join(
+            story + " (" + path.name + ")" for story, path in known.items()))
+        if outside and in_scope:
+            inventory.append("- Fuera del alcance del sprint (no probar): " + ", ".join(outside))
+    parts = ["\n\n---\n## SPEC PRINCIPAL (informes aprobados, ubicación detectada por búsqueda)\n"
+             + "\n\n".join(spec_blocks + notes)] + ["\n".join(inventory)]
+
+    story_files = [STORIES_DIR + "/" + known[story].name for story in in_scope if story in known] or [STORY_MAP]
     names = (DISCOVERY_MARKER, "04-reglas-y-contratos/01-reglas-de-negocio.md",
              "04-reglas-y-contratos/02-estados-y-transiciones.md", "04-reglas-y-contratos/03-convenciones-mock.md",
              "03-alcance-hackathon/01-compromiso-y-prioridad.md", "05-trazabilidad/01-matriz-trazabilidad.md",
-             story_file)
-    header = "\n\n---\n## DISCOVERY (secundaria)" + (" — historia detectada: " + story if story
-                                                       else " — historia no detectada, revisa el mapa de historias")
+             *story_files)
+    header = "\n\n---\n## DISCOVERY (secundaria)" + (" — historias del alcance: " + ", ".join(in_scope) if in_scope
+                                                       else " — sin historias determinadas, revisa el mapa de historias")
     if len(found["discovery"]) > 1:
         parts.append(header + "\n" + _ambiguous("DISCOVERY", found["discovery"], root))
     elif not found["discovery"]:
         parts.append(header + "\nDISCOVERY NO ENCONTRADO: se buscó una carpeta con " + DISCOVERY_MARKER
                      + ". No asumas su ruta: pregunta al PO y declara lo que no puedas verificar.")
     else:
-        base = found["discovery"][0]
         blocks = []
         for name in names:
             text = _read(base / name, DISCOVERY_CHARS)
@@ -371,7 +439,8 @@ def build_task(feature: dict) -> Task:
                 + "\n" + str(feature.get("description", ""))
                 + "\n" + str(feature.get("acceptance_criteria", []))
                 + build_context(feature),
-                expected_output=("Informe de QA y seguridad en Markdown con: (1) plan de pruebas por AC con ID, "
+                expected_output=("Informe de QA y seguridad en Markdown con: (0) inventario de HU y AC del alcance con "
+                                 "su fuente (spec/discovery) y las HU fuera del alcance; (1) plan de pruebas por AC con ID, "
                                  "técnica ISTQB (EP/BVA/DT/ST/EG), entrada, resultado esperado, prioridad y estado, "
                                  "con matriz de trazabilidad AC <-> caso; (2) código de los tests con el ID del "
                                  "caso en el nombre; (3) tabla de evidencia (HU, AC, test ID, comando, "

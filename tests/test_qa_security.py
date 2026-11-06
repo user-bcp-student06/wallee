@@ -36,7 +36,8 @@ class QaSecurityContractTests(unittest.TestCase):
         text = qa_security.INSTRUCTIONS
         for expected in ("ISTQB", "EP (partición de equivalencia)", "BVA (valores límite", "DT (tabla de decisión)",
                          "ST (transición de estados)", "EG (adivinar errores", "NO exhaustivo",
-                         "499.99 / 500.00 / 500.01", "trazabilidad bidireccional"):
+                         "499.99 / 500.00 / 500.01", "trazabilidad bidireccional",
+                         "Alcance del sprint: descúbrelo", "FUERA DEL ALCANCE DEL SPRINT"):
             self.assertIn(expected, text)
 
     def test_task_embeds_spec_discovery_and_paths(self):
@@ -91,7 +92,7 @@ class QaSecurityContextTests(unittest.TestCase):
             context = qa_security.build_context(FEATURE, root)
         self.assertIn("### algun/lugar/discovery/06-handoff-por-rol/qa-security.md", context)
         self.assertIn("HISTORIA W4 T2", context)
-        self.assertIn("historia detectada: W4", context)
+        self.assertIn("historias del alcance: W4", context)
         self.assertIn("- backend-nestjs: output/backend-nestjs", context)
         self.assertIn("frontend-react: NO ENCONTRADA", context)
 
@@ -117,13 +118,45 @@ class QaSecurityContextTests(unittest.TestCase):
         self.assertIn("(truncado)", context)
         self.assertLess(len(context), qa_security.SPEC_CHARS + 2500)
 
-    def test_story_detection(self):
-        self.assertEqual(qa_security.story_for({"title": "W5 reversos"}), "W5")
-        self.assertEqual(qa_security.story_for({"title": "User onboarding MVP completion"}), "W1")
-        self.assertEqual(qa_security.story_for({"title": "Payer low value payment confirmation"}), "W2")
-        self.assertEqual(qa_security.story_for({"title": "Merchant QR payment status visibility"}), "W3")
-        self.assertEqual(qa_security.story_for({"title": "Operations transaction reconciliation"}), "W6")
-        self.assertIsNone(qa_security.story_for({"title": "Transfer funds"}))
+    def test_story_scope_comes_from_the_spec_first(self):
+        known = {"W1": Path("W1-x.md"), "W2": Path("W2-x.md"), "W4": Path("W4-x.md")}
+        stories, origin = qa_security.scope(FEATURE, "Criterios W1-AC1 y W2-AC2 del sprint", known)
+        self.assertEqual((stories, origin), (["W1", "W2"], "spec"))
+
+    def test_scope_uses_any_hu_prefix_found_in_the_spec(self):
+        stories, origin = qa_security.scope({"title": "x"}, "H7-AC1 y H8-AC3", {})
+        self.assertEqual((stories, origin), (["H7", "H8"], "spec"))
+
+    def test_scope_falls_back_to_feature_then_keywords_then_none(self):
+        known = {"W1": Path("a"), "W4": Path("b")}
+        self.assertEqual(qa_security.scope({"title": "W1 alta"}, "", known), (["W1"], "feature"))
+        stories, origin = qa_security.scope({"title": "Payment idempotency protection"}, "", known)
+        self.assertEqual(stories, ["W4"])
+        self.assertIn("heurística", origin)
+        self.assertEqual(qa_security.scope({"title": "Transfer funds"}, "", known), ([], "ninguna"))
+
+    def test_spec_with_one_story_leaves_the_rest_out_of_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "output/specs/product_owner_report.md", "Alcance del sprint: W2-AC1, W2-AC2")
+            base = "challenge/docs/discovery"
+            write(root, base + "/06-handoff-por-rol/qa-security.md", "HANDOFF")
+            write(root, base + "/02-producto/historias/W2-pago-contacto.md", "TEXTO HISTORIA W2")
+            write(root, base + "/02-producto/historias/W4-idempotencia.md", "TEXTO HISTORIA W4")
+            context = qa_security.build_context({"title": "Payment idempotency protection"}, root)
+        self.assertIn("HU del sprint a probar: W2 (origen: spec)", context)
+        self.assertIn("Fuera del alcance del sprint (no probar): W4", context)
+        self.assertIn("TEXTO HISTORIA W2", context)
+        self.assertNotIn("TEXTO HISTORIA W4", context)
+
+    def test_undetermined_scope_asks_the_po(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "challenge/docs/discovery/06-handoff-por-rol/qa-security.md", "HANDOFF")
+            write(root, "challenge/docs/discovery/02-producto/historias/W1-onboarding.md", "H1")
+            context = qa_security.build_context({"title": "Transfer funds"}, root)
+        self.assertIn("NO DETERMINADAS", context)
+        self.assertIn("DECISIÓN REQUERIDA", context)
 
 
 if __name__ == "__main__":
