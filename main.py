@@ -2,7 +2,7 @@
 
 Flujo:
   1. Conecta al MCP Projects → lista proyectos → elige proyecto → lista backlog → elige feature
-  2. Por cada agente (Arquitecto, AI Engineer, Pruebas, Seguridad, Chapter), corre un mini-Crew de un solo paso.
+  2. Por cada agente (Product Owner, Architect, AI Engineer 1, AI Engineer 2, QA & Security, Presenter), corre un mini-Crew de un solo paso.
   3. Tras cada paso muestra un preview y pide aprobación humana [s / n / r]:
        s = aprobar y continuar
        n = rechazar y abortar
@@ -15,9 +15,12 @@ Flujo:
 Estructura generada en output/:
   .checkpoint.json        ← estado de cada paso
   specs/
-    user_story.md
-    ai_engineer_spec.md
-    chapter_review.md
+    product_owner_report.md
+    architect_report.md
+    ai_engineer_1_report.md
+    ai_engineer_2_report.md
+    qa_security_report.md
+    presenter_report.md
   backend-nestjs/src/<feature>/...
   frontend-react/src/<feature>/...
   db/schema.sql  seed.sql
@@ -538,7 +541,7 @@ def main():
         if step_data.get("status") == "approved":
             approved_outputs[step_key] = step_data.get("output", "")
 
-    # ── Enriquecer backstory del Chapter con brief del feature ────────
+    # ── Enriquecer backstory del Architect con brief del feature ──────
     architect_agent.backstory += HEX_PROMPT_PREFIX + (
         f"\n\n## Feature brief\n"
         f"**{feature['title']}**\n\n{feature['description']}\n\n"
@@ -585,10 +588,10 @@ def main():
             if ctx_note:
                 task.description = task.description + ctx_note
 
-            if with_data and step_key == "ai_engineer":
+            if with_data and step_key == "ai_engineer_1":
                 task.description += "\nUsa el diseño de persistencia aprobado de Datos y persistencia. No regeneres sus archivos SQL; implementa el acceso a datos del backend NestJS según ese contrato."
-            if with_data and step_key == "chapter":
-                task.description += "\nRevisa también el modelo, migración y compatibilidad del contrato aprobado de Datos y persistencia con el backend NestJS."
+            if with_data and step_key == "qa_security":
+                task.description += "\nRevisa también el modelo, migración, integridad y compatibilidad del contrato aprobado de Datos y persistencia con el backend NestJS."
 
             # Si el usuario ingresó feedback opcional en un reintento, inyectarlo como directiva prioritaria
             if user_feedback:
@@ -633,7 +636,7 @@ def main():
                 # el while True vuelve a ejecutar el paso
 
     # ── Todos los pasos aprobados ─────────────────────────────────────
-    chapter_text = str(getattr(approved_outputs.get("chapter", ""), "raw", approved_outputs.get("chapter", "")) or "")
+    presenter_text = str(getattr(approved_outputs.get("presenter", ""), "raw", approved_outputs.get("presenter", "")) or "")
 
     print("\n" + "=" * 60)
     print("✅ TODOS LOS PASOS APROBADOS")
@@ -643,8 +646,8 @@ def main():
     print("  output/frontend-react/   → archivos .ts/.tsx/.css de React extraídos")
     print("  output/db/               → .sql extraídos")
     print("=" * 60)
-    print("\nVEREDICTO del Chapter (extracto):")
-    print(chapter_text[-500:] if len(chapter_text) > 500 else chapter_text)
+    print("\nInforme del Presenter (extracto):")
+    print(presenter_text[-500:] if len(presenter_text) > 500 else presenter_text)
 
 
 if __name__ == "__main__":

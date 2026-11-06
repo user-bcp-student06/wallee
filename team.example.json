@@ -1,9 +1,10 @@
 {
   "roles": {
-    "architect": "github-user-1",
-    "ai_engineer": "github-user-2",
-    "testing": "github-user-3",
-    "security": "github-user-4",
-    "chapter": "github-user-5"
+    "product_owner": "github-user-1",
+    "architect": "github-user-2",
+    "ai_engineer_1": "github-user-3",
+    "ai_engineer_2": "github-user-4",
+    "qa_security": "github-user-5",
+    "presenter": "github-user-6"
   }
 }

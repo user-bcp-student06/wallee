@@ -1,9 +1,9 @@
-"""Orden de ejecución y activación explícita del sexto perfil."""
+"""Orden de ejecución y activación explícita del séptimo perfil."""
 import os
-from agents import architect, data, ai_engineer, testing, security, chapter
+from agents import product_owner, architect, data, ai_engineer_1, ai_engineer_2, qa_security, presenter
 
-ROLES = (architect, ai_engineer, testing, security, chapter)
-DATA_ROLES = (architect, data, ai_engineer, testing, security, chapter)
+ROLES = (product_owner, architect, ai_engineer_1, ai_engineer_2, qa_security, presenter)
+DATA_ROLES = (product_owner, architect, data, ai_engineer_1, ai_engineer_2, qa_security, presenter)
 
 
 def include_data() -> bool:
