@@ -44,9 +44,20 @@ Eres asistente, no decisor: las decisiones críticas las toma el humano.
   de la clave de idempotencia en la base de datos (la lógica en memoria no basta), (c) scripts `npm test`.
 
 # Fuentes de contexto (en este orden de prioridad)
-1. PRINCIPAL — el spec: al final de esta tarea recibes «SPEC PRINCIPAL» (informes aprobados del Product Owner,
-   Architect, Datos y AI Engineers, ubicados por búsqueda) además de «Contexto de pasos anteriores». Los
-   criterios (CA-n), alcance y decisiones del PO mandan. Relaciona cada CA-n con su ID `Wx-ACn` del discovery.
+1. PRINCIPAL — el spec: al final de esta tarea recibes «SPEC PRINCIPAL», que es la especificación OpenSpec del
+   proyecto (carpeta `openspec/`) y los informes aprobados del Product Owner, Architect, Datos y AI Engineers
+   (ubicados por búsqueda), además de «Contexto de pasos anteriores». Cómo leer OpenSpec:
+   - `openspec/changes/<cambio>/` es un cambio ACTIVO = el trabajo del sprint/HU actual. Contiene `proposal.md` (por
+     qué, qué cambia y «Fuera de alcance»), `specs/**/spec.md` (Requirement + Scenario WHEN/THEN),
+     `design.md` (decisiones técnicas) y `tasks.md` (tareas T1 con casilla `[ ]`/`[x]`).
+   - Cada `Scenario` es un resultado esperado verificable: deriva de él tus T2 (camino principal) y T3 (bordes y
+     errores). Los valores límite salen de las reglas de validación del Requirement.
+   - Revisa que la cláusula «verificar ...» de cada tarea de `tasks.md` quede cubierta por al menos un caso tuyo.
+     Las tareas T1 son del AI Engineer: no las marques hechas ni las escribas.
+   - Lo que `proposal.md` declare «Fuera de alcance» NO se prueba. `openspec/changes/archive/` y
+     `openspec/specs/` son sprints ya cerrados o especificaciones vigentes: solo regresión mínima.
+   - Los criterios (CA-n), alcance y decisiones del PO también mandan. Relaciona cada requirement/CA-n con su ID
+     `Wx-ACn` del discovery.
 2. SECUNDARIA — discovery (bloque «DISCOVERY (secundaria)», normalmente en challenge/docs/discovery): tu handoff,
    reglas RN-01..RN-18, estados, convención del mock, matriz de trazabilidad y la historia que corresponde. Úsalo
    para completar IDs, reglas y bordes. Si contradice al spec principal, manda el spec y reporta la discrepancia.
@@ -70,9 +81,10 @@ Eres asistente, no decisor: las decisiones críticas las toma el humano.
 
 # Alcance del sprint: descúbrelo, no lo asumas
 El trabajo avanza paso a paso por sprint/HU y el spec puede traer solo 1, 2 o 3 HU. Tu alcance son SOLO las HU y AC
-que aparecen en el spec principal (o, si no los menciona, en el feature recibido). El bloque «INVENTARIO DE
-ALCANCE» te da las HU detectadas; confírmalo contra el spec y el discovery siguiendo estos pasos:
-1. Inventario: lista cada HU, sus AC/CA-n y la fuente (spec, discovery o ambos) en una tabla.
+de los cambios OpenSpec activos (`openspec/changes/*`, sin `archive`) o, si no hay, de los informes del spec y del
+feature recibido. El bloque «INVENTARIO DE ALCANCE» te da lo detectado (cambios, requisitos, escenarios y tareas
+hechas/pendientes); confírmalo contra el spec y el discovery siguiendo estos pasos:
+1. Inventario: lista cada HU, sus requirements/AC/CA-n y la fuente (spec, discovery o ambos) en una tabla.
 2. Completa con el discovery solo esas HU: T2/T3, reglas RN, estados, mock y bordes.
 3. Señala discrepancias: AC en el spec sin contraparte en el discovery y viceversa (manda el spec).
 4. Deriva las tareas T2/T3 por AC con las técnicas ISTQB y asígnales prioridad por riesgo.
@@ -259,6 +271,8 @@ CODE_DIRS = ("backend-nestjs", "frontend-react")
 SPEC_FILES = ("product_owner_report.md", "architect_report.md", "data_spec.md",
               "ai_engineer_1_report.md", "ai_engineer_2_report.md")
 SPEC_CHARS = 12000
+OPENSPEC_CHARS = 8000
+OPENSPEC_DESIGN_CHARS = 4000
 DISCOVERY_CHARS = 6000
 DISCOVERY_MARKER = "06-handoff-por-rol/qa-security.md"
 DISCOVERY_FILES = (
@@ -290,8 +304,8 @@ def _rel(path: Path, root: Path) -> str:
 
 
 def scan(root: Path = ROOT) -> dict:
-    """Busca los informes del spec, la carpeta de discovery y las carpetas de código bajo root."""
-    found = {"specs": {}, "discovery": [], "code": {}}
+    """Busca OpenSpec, los informes del spec, la carpeta de discovery y las carpetas de código bajo root."""
+    found = {"specs": {}, "discovery": [], "code": {}, "openspec": []}
     for current, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in IGNORED_DIRS)
         here = Path(current)
@@ -300,6 +314,8 @@ def scan(root: Path = ROOT) -> dict:
                 found["specs"].setdefault(name, []).append(here / name)
         if (here / DISCOVERY_MARKER).is_file():
             found["discovery"].append(here)
+        if here.name == "openspec" and ((here / "changes").is_dir() or (here / "config.yaml").is_file()):
+            found["openspec"].append(here)
         for name in dirs:
             if name in CODE_DIRS:
                 found["code"].setdefault(name, []).append(here / name)
@@ -313,6 +329,40 @@ def _read(path: Path, limit: int) -> str:
         return ""
     text = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL).strip()
     return text if len(text) <= limit else text[:limit] + "\n...(truncado)"
+
+
+def openspec_context(base: Path, root: Path) -> tuple:
+    """Bloques y resumen de los cambios OpenSpec activos, las specs vigentes y los cambios archivados."""
+    blocks, summary, active_text = [], [], []
+    changes = base / "changes"
+    active = sorted(p for p in changes.iterdir()
+                    if p.is_dir() and p.name != "archive" and not p.name.startswith(".")) if changes.is_dir() else []
+    for change in active:
+        specs = sorted((change / "specs").rglob("spec.md")) if (change / "specs").is_dir() else []
+        files = [(change / "proposal.md", OPENSPEC_CHARS)] + [(p, OPENSPEC_CHARS) for p in specs] \
+            + [(change / "tasks.md", OPENSPEC_CHARS), (change / "design.md", OPENSPEC_DESIGN_CHARS)]
+        for path, limit in files:
+            text = _read(path, limit)
+            if text:
+                blocks.append("### " + _rel(path, root) + "\n" + text)
+                active_text.append(text)
+        spec_text = "".join(_read(p, 10 ** 6) for p in specs)
+        tasks_text = _read(change / "tasks.md", 10 ** 6)
+        summary.append("- Cambio activo `" + change.name + "`: "
+                       + str(len(re.findall(r"^###\s+Requirement:", spec_text, re.MULTILINE))) + " requirements, "
+                       + str(len(re.findall(r"^####\s+Scenario:", spec_text, re.MULTILINE))) + " scenarios, tareas "
+                       + str(len(re.findall(r"^\s*-\s*\[[xX]\]", tasks_text, re.MULTILINE))) + " hechas / "
+                       + str(len(re.findall(r"^\s*-\s*\[ \]", tasks_text, re.MULTILINE))) + " pendientes")
+    current_specs = sorted((base / "specs").rglob("spec.md")) if (base / "specs").is_dir() else []
+    for path in current_specs:
+        text = _read(path, OPENSPEC_DESIGN_CHARS)
+        if text:
+            blocks.append("### " + _rel(path, root) + " (spec vigente, solo regresión mínima)\n" + text)
+    archived = sorted(p.name for p in (changes / "archive").iterdir()
+                      if p.is_dir()) if (changes / "archive").is_dir() else []
+    if archived:
+        summary.append("- Cambios archivados (sprints cerrados, solo regresión mínima): " + ", ".join(archived))
+    return blocks, summary, "\n".join(active_text)
 
 
 def _ambiguous(label: str, paths: list, root: Path) -> str:
@@ -337,12 +387,12 @@ def available_stories(base: Path) -> dict:
     return stories
 
 
-def stories_in(text: str, known) -> list:
-    """IDs de HU citados en el texto: por sus AC (W4-AC2) o por su ID, si existe en el discovery."""
+def stories_in(text: str, known, ac_only: bool = False) -> list:
+    """IDs de HU citados en el texto: por sus AC (W4-AC2) o, si no es ac_only, por su ID en el discovery."""
     seen = []
     for match in AC_STORY_ID.finditer(text):
         seen.append((match.start(), match.group(1).upper()))
-    for story in known:
+    for story in () if ac_only else known:
         for match in re.finditer(r"\b" + re.escape(story) + r"\b", text, re.IGNORECASE):
             seen.append((match.start(), story))
     ordered = []
@@ -361,9 +411,12 @@ def guess_story(feature: dict, known) -> str | None:
 
 
 def scope(feature: dict, spec_text: str, known) -> tuple:
-    """HU del sprint: las del spec; si no hay, las del feature; si no, una heurística (y se confirma con el PO)."""
+    """HU del sprint: las del spec; si no hay, las del feature; si no, una heurística (y se confirma con el PO).
+
+    Los AC citados (W1-AC2) pesan más que una mención suelta: «W2 depende de W1» no mete a W2 en el sprint.
+    """
     for source, text in (("spec", spec_text), ("feature", feature_text(feature))):
-        stories = stories_in(text, known)
+        stories = stories_in(text, known, ac_only=True) or stories_in(text, known)
         if stories:
             return stories, source
     guessed = guess_story(feature, known)
@@ -383,21 +436,32 @@ def build_context(feature: dict, root: Path = ROOT) -> str:
             text = _read(paths[0], SPEC_CHARS)
             if text:
                 spec_blocks.append("### " + _rel(paths[0], root) + "\n" + text)
-    if not spec_blocks:
-        notes.append("SPEC PRINCIPAL NO ENCONTRADO: se buscó " + ", ".join(SPEC_FILES) + " bajo todo el proyecto. "
+
+    open_blocks, open_summary, open_text = [], [], ""
+    if len(found["openspec"]) > 1:
+        notes.append(_ambiguous("OPENSPEC", found["openspec"], root))
+    elif found["openspec"]:
+        open_blocks, open_summary, open_text = openspec_context(found["openspec"][0], root)
+    if not open_blocks and not spec_blocks:
+        notes.append("SPEC PRINCIPAL NO ENCONTRADO: se buscó la carpeta openspec/ y los informes "
+                     + ", ".join(SPEC_FILES) + " bajo todo el proyecto. "
                      "No asumas una ruta ni inventes su contenido: emite DECISIÓN REQUERIDA al PO preguntando dónde "
                      "está el spec, trabaja con el discovery y marca todo «PENDIENTE DE CONFIRMAR».")
-    elif "product_owner_report.md" not in found["specs"]:
+    elif not open_blocks and "product_owner_report.md" not in found["specs"]:
         notes.append("Falta product_owner_report.md: los criterios (CA-n) del PO no están disponibles; "
                      "pregunta al PO antes de dar un AC por probado.")
 
     base = found["discovery"][0] if len(found["discovery"]) == 1 else None
     known = available_stories(base) if base else {}
-    in_scope, origin = scope(feature, "\n".join(spec_blocks), known)
+    in_scope, origin = scope(feature, open_text or "\n".join(spec_blocks), known)
+    if origin == "spec" and open_text:
+        origin = "OpenSpec: cambios activos"
     outside = [story for story in known if story not in in_scope]
     inventory = ["\n\n---\n## INVENTARIO DE ALCANCE (detectado por búsqueda; confírmalo)",
                  "- HU del sprint a probar: " + (", ".join(in_scope) if in_scope else "NO DETERMINADAS")
-                 + " (origen: " + origin + ")"]
+                 + " (origen: " + origin + ")"] + open_summary
+    if found["openspec"] and not open_text:
+        inventory.append("- OpenSpec no tiene cambios activos: pregunta al PO cuál es el cambio del sprint actual.")
     if not in_scope:
         inventory.append("- No se pudo determinar qué HU están en el sprint: emite DECISIÓN REQUERIDA al PO "
                          "y no completes el alcance por tu cuenta.")
@@ -406,8 +470,8 @@ def build_context(feature: dict, root: Path = ROOT) -> str:
             story + " (" + path.name + ")" for story, path in known.items()))
         if outside and in_scope:
             inventory.append("- Fuera del alcance del sprint (no probar): " + ", ".join(outside))
-    parts = ["\n\n---\n## SPEC PRINCIPAL (informes aprobados, ubicación detectada por búsqueda)\n"
-             + "\n\n".join(spec_blocks + notes)] + ["\n".join(inventory)]
+    parts = ["\n\n---\n## SPEC PRINCIPAL (OpenSpec e informes aprobados, ubicación detectada por búsqueda)\n"
+             + "\n\n".join(open_blocks + spec_blocks + notes)] + ["\n".join(inventory)]
 
     story_files = [STORIES_DIR + "/" + known[story].name for story in in_scope if story in known] or [STORY_MAP]
     names = (DISCOVERY_MARKER, "04-reglas-y-contratos/01-reglas-de-negocio.md",
