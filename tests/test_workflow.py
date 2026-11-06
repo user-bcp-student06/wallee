@@ -1,4 +1,4 @@
-"""Exercise the six-role pipeline without calling Copilot or GitHub."""
+"""Exercise the five-role pipeline without calling Copilot or GitHub."""
 
 import contextlib
 import io
@@ -24,7 +24,7 @@ class WorkflowTests(unittest.TestCase):
         tasks = build_tasks(FEATURE)
         self.assertEqual(
             list(tasks),
-            ["architect", "backend", "frontend", "testing", "security", "chapter"],
+            ["product_owner", "architect", "ai_engineer_1", "ai_engineer_2", "qa_security", "presenter"],
         )
         for role in ROLES:
             self.assertIs(tasks[role.KEY].agent, role.agent)
@@ -58,12 +58,15 @@ class WorkflowTests(unittest.TestCase):
             calls.append((key, task.description))
             if key == "data":
                 return "Approved data contract.\n```sql\n-- migration.sql\nCREATE TABLE accounts (id INTEGER PRIMARY KEY);\n```"
-            if key == "backend":
-                return "```java\n// BalanceService.java\npackage pe.bcp.login.service;\npublic class BalanceService {}\n```"
-            if key == "frontend":
-                return "```typescript\n// balance.service.ts\nexport class BalanceService {}\n```"
-            if key == "testing":
-                return "Coverage report. NO EJECUTADO.\n```java\n// BalanceTest.java\npackage pe.bcp.login;\npublic class BalanceTest {}\n```"
+            if key == "ai_engineer_1":
+                return (
+                    "```typescript\n// backend-nestjs/src/balance/balance.service.ts\nexport class BalanceService {}\n```\n"
+                    "```typescript\nimport { Module } from '@nestjs/common';\n@Module({})\nexport class TransferModule {}\n```"
+                )
+            if key == "ai_engineer_2":
+                return "```typescript\n// frontend-react/src/balance/BalanceView.tsx\nexport default function BalanceView() { return <div />; }\n```"
+            if key == "qa_security":
+                return "Coverage report. NO EJECUTADO.\n```typescript\n// balance.service.spec.ts\nimport { Test } from '@nestjs/testing';\ndescribe('BalanceService', () => { it('works', () => {}); });\n```"
             return f"Approved output from {key}. No model was called."
 
         with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack:
@@ -109,31 +112,38 @@ class WorkflowTests(unittest.TestCase):
                     app.main()
                 rejected = json.loads((output / ".checkpoint.json").read_text())
                 self.assertEqual(rejected["steps"]["data"]["status"], "rejected")
-                self.assertNotIn("backend", rejected["steps"])
-                self.assertIn("Add a uniqueness constraint", calls[2][1])
+                self.assertNotIn("ai_engineer_1", rejected["steps"])
+                self.assertIn("Add a uniqueness constraint", calls[3][1])
             app.main()
 
             expected = [role.KEY for role in roles]
             if interrupt_data:
-                expected[1:2] = ["data", "data", "data"]
+                expected[2:3] = ["data", "data", "data"]
             self.assertEqual([key for key, _ in calls], expected)
             for key, _, _, spec, _ in steps:
                 self.assertTrue((output / "specs" / spec).is_file(), key)
-            self.assertTrue(
-                (
-                    output
-                    / "backend-quarkus/src/test/java/pe/bcp/login/BalanceTest.java"
-                ).is_file()
-            )
-            chapter_prompt = calls[-1][1]
-            self.assertIn("Coverage report", chapter_prompt)
-            self.assertIn("Approved output from security", chapter_prompt)
+            for relative in (
+                "backend-nestjs/src/balance/balance.service.ts",
+                "backend-nestjs/src/transfer-funds/balance.service.spec.ts",
+                "backend-nestjs/src/transfer-funds/transfer.module.ts",
+                "frontend-react/src/balance/BalanceView.tsx",
+                "backend-nestjs/package.json",
+                "frontend-react/package.json",
+                "frontend-react/src/main.tsx",
+            ):
+                self.assertTrue((output / relative).is_file(), relative)
+            presenter_prompt = calls[-1][1]
+            self.assertIn("Coverage report", presenter_prompt)
+            self.assertIn("Approved output from architect", presenter_prompt)
             checkpoint = json.loads((output / ".checkpoint.json").read_text())
             self.assertEqual(len(checkpoint["steps"]), len(roles))
             if with_data:
-                self.assertEqual(list(dict.fromkeys(key for key, _ in calls))[:3], ["architect", "data", "backend"])
-                self.assertIn("Approved data contract", next(prompt for key, prompt in calls if key == "backend"))
-                self.assertIn("Approved data contract", chapter_prompt)
+                self.assertEqual(
+                    list(dict.fromkeys(key for key, _ in calls))[:4],
+                    ["product_owner", "architect", "data", "ai_engineer_1"],
+                )
+                self.assertIn("Approved data contract", next(prompt for key, prompt in calls if key == "ai_engineer_1"))
+                self.assertIn("Approved data contract", presenter_prompt)
                 self.assertTrue((output / "db/migration.sql").is_file())
             self.assertTrue(
                 all(

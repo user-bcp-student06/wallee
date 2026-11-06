@@ -3,7 +3,7 @@
 Los agentes parten con instrucciones básicas. Sigue [Mejora tu agente](MEJORA_TU_AGENTE.md) para completar el ejercicio y consultar resultados desde el portal.
 
 Base de trabajo del Lab 4, S1. Lee una funcionalidad del backlog mediante MCP Projects
-y genera una solución Quarkus 3.x y Angular 17 con seis agentes de CrewAI, o siete cuando el equipo activa Datos y persistencia.
+y genera una solución para Wallee con NestJS (backend) y React (frontend) con seis agentes de CrewAI, o siete cuando el equipo activa Datos y persistencia.
 Cada agente tiene su definición y la tarea en un archivo propio.
 
 ## Editar tu agente
@@ -11,21 +11,22 @@ Cada agente tiene su definición y la tarea en un archivo propio.
 Los agentes son básicos: un objetivo breve, una responsabilidad por rol y una salida concreta.
 Usa un requisito pequeño, por ejemplo crear una tarea con título.
 Ajusta ese ejemplo al requisito del backlog de tu equipo.
-Testing propone un caso válido y otro inválido; Security revisa entradas y secretos;
-Chapter compara las entregas con el requisito. Los prompts conservan los formatos
+El Product Owner fija alcance y criterios; AI Engineer 1 implementa el dominio y el backend NestJS;
+AI Engineer 2 el frontend React y el agente de excepciones; QA & Security prueba y revisa riesgos;
+Presenter prepara la evidencia y el pitch. Los prompts conservan los formatos
 que necesita el flujo para guardar código y revisar resultados.
 
 Cada participante edita el archivo de su rol:
 
+- `agents/product_owner.py`
 - `agents/architect.py`
-- `agents/backend.py`
-- `agents/frontend.py`
-- `agents/testing.py`
-- `agents/security.py`
-- `agents/chapter.py`
+- `agents/ai_engineer_1.py`
+- `agents/ai_engineer_2.py`
+- `agents/qa_security.py`
+- `agents/presenter.py`
 
-El orden es `architect → backend → frontend → testing → security → chapter`.
-Chapter reemplaza al LT como revisor final. La aprobación humana se conserva entre etapas.
+El orden es `product_owner → architect → ai_engineer_1 → ai_engineer_2 → qa_security → presenter`.
+La aprobación humana se conserva entre etapas.
 Consulta [TEAM.md](TEAM.md) para crear el repo de tu equipo y repartir los archivos.
 
 ## Preparar el entorno
@@ -84,31 +85,34 @@ o `n` para rechazar y detener el flujo. El checkpoint permite retomar los pasos 
 
 Los artefactos se guardan en `output/`:
 
-- `specs/user_story.md`: especificación del arquitecto.
-- `specs/backend_spec.md` y `specs/frontend_spec.md`: implementaciones.
-- `specs/testing_report.md`: casos, tests y comandos. Los resultados quedan pendientes de ejecución humana.
-- `specs/security_report.md`: hallazgos y verificaciones de seguridad.
-- `specs/chapter_review.md`: revisión final del Chapter.
-- `backend-quarkus/` y `frontend-angular/`: código extraído y configuración de arranque.
+- `specs/product_owner_report.md`: alcance y criterios de aceptación.
+- `specs/architect_report.md`: solución, módulos y contrato de API.
+- `specs/ai_engineer_1_report.md` y `specs/ai_engineer_2_report.md`: implementaciones de backend y de frontend/agente.
+- `specs/qa_security_report.md`: casos, tests, comandos y hallazgos de seguridad. Los resultados quedan pendientes de ejecución humana.
+- `specs/presenter_report.md`: evidencia y guion del pitch.
+- `backend-nestjs/` y `frontend-react/`: código extraído y configuración de arranque.
 - `.checkpoint.json`: estado local de la ejecución.
 
 ## Probar la solución generada
 
-Con Java 17 o superior y Maven instalados, abre una terminal en `output/backend-quarkus`:
-
-```sh
-mvn test
-mvn compile quarkus:dev
-```
-
-Con Node.js 18.19 o superior y npm, abre otra terminal en `output/frontend-angular`:
+Con Node.js 18.19 o superior y npm, abre una terminal en `output/backend-nestjs`:
 
 ```sh
 npm install
-npm start
+npm test
+npm run start:dev
 ```
 
-La API se inicia en `http://localhost:8080` y Angular en `http://localhost:4200`.
+Abre otra terminal en `output/frontend-react`:
+
+```sh
+npm install
+npm test
+npm run dev
+```
+
+La API se inicia en `http://localhost:3000` y React (Vite) en `http://localhost:5173`.
+Los AI Engineers deben emitir `app.module.ts` y `App.tsx`; si faltan, el proyecto no arranca.
 Revisa los comandos adicionales del informe de pruebas y registra sus resultados reales.
 
 ## Verificar cambios en los agentes
@@ -131,11 +135,11 @@ sus seis roles. En `team.json`, solo el equipo de siete añade `"data": "usuario
 dentro de `roles`, con un usuario distinto de los otros responsables.
 
 Antes de iniciar un flujo nuevo, el líder del equipo de siete configura
-`CREWAI_INCLUDE_DATA=true` en su `.env`. El orden será Arquitectura → Datos y
-persistencia → Backend → Frontend → Pruebas → Seguridad → Chapter. Cada etapa
+`CREWAI_INCLUDE_DATA=true` en su `.env`. El orden será Product Owner → Architect → Datos y
+persistencia → AI Engineer 1 → AI Engineer 2 → QA & Security → Presenter. Cada etapa
 mantiene aprobación, rechazo y reintento humanos. Datos produce `output/specs/data_spec.md`
-y propuestas SQL en `output/db/`; no ejecuta migraciones. Backend usa ese contrato
-y Chapter lo revisa. Los participantes mejoran las instrucciones iniciales de su agente.
+y propuestas SQL en `output/db/`; no ejecuta migraciones. AI Engineer 1 usa ese contrato
+y QA & Security lo revisa. Los participantes mejoran las instrucciones iniciales de su agente.
 
 Por defecto la variable es `false`. Un checkpoint de seis etapas no se reutiliza
 en el flujo de siete ni viceversa: conserva la carpeta `output/` con otro nombre

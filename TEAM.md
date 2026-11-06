@@ -20,12 +20,12 @@ cd crewai
 
 Anota un responsable por archivo. Cada persona edita su propio agente. Consulta la tabla de responsabilidades, entregables y puntos de partida en [Mejora tu agente](MEJORA_TU_AGENTE.md#de-dónde-partir-según-tu-rol). Solo el equipo de siete añade Datos y persistencia.
 
+- `agents/product_owner.py`: responsable pendiente. Prioriza, fija el alcance y mantiene los criterios de aceptación.
 - `agents/architect.py`: responsable pendiente. Define la solución y el contrato de API.
-- `agents/backend.py`: responsable pendiente. Implementa el backend.
-- `agents/frontend.py`: responsable pendiente. Implementa el frontend.
-- `agents/testing.py`: responsable pendiente. Diseña las pruebas y sus comandos de ejecución.
-- `agents/security.py`: responsable pendiente. Revisa riesgos y propone correcciones verificables.
-- `agents/chapter.py`: responsable pendiente. Revisa todas las entregas y emite el veredicto final.
+- `agents/ai_engineer_1.py`: responsable pendiente. Implementa el dominio y el backend (NestJS).
+- `agents/ai_engineer_2.py`: responsable pendiente. Implementa el frontend (React) y el agente de excepciones.
+- `agents/qa_security.py`: responsable pendiente. Diseña las pruebas y sus comandos, y revisa riesgos de seguridad.
+- `agents/presenter.py`: responsable pendiente. Controla tiempos, evidencia y pitch.
 
 ## Registrar responsables para el dashboard
 
@@ -34,7 +34,7 @@ Copia `team.example.json` a `team.json`, reemplaza los seis valores por usuarios
 ## Entregar un cambio
 
 1. Acuerden un requerimiento y sus criterios de aceptación.
-2. Crea tu rama, por ejemplo `git switch -c agents/backend`.
+2. Crea tu rama, por ejemplo `git switch -c agents/ai-engineer-1`.
 3. Edita las instrucciones de tu agente en su archivo. Coordina los cambios de contratos con el arquitecto.
 4. Ejecuta `python tools/verify.py`.
 5. Publica tu rama y abre un PR hacia `main` del repo del líder. No envíes el PR al template de la organización.
@@ -44,7 +44,7 @@ Una persona ejecuta el pipeline integrado desde `main`. El equipo participa en l
 humanas y aporta feedback en cada etapa. Cada integrante conserva su propia `.env`, autenticación
 y entorno virtual. No compartan checkpoints entre ejecuciones de distintas computadoras.
 
-Los agentes generan texto y archivos. El agente de pruebas propone tests y comandos;
+Los agentes generan texto y archivos. El agente de QA & Security propone tests y comandos;
 una persona los ejecuta y adjunta la salida real al PR. Un informe del modelo no demuestra que las pruebas pasaron.
 
 ## Equipo de siete (solo CrewAI)
@@ -55,11 +55,11 @@ sus seis roles. En `team.json`, solo el equipo de siete añade `"data": "usuario
 dentro de `roles`, con un usuario distinto de los otros responsables.
 
 Antes de iniciar un flujo nuevo, el líder del equipo de siete configura
-`CREWAI_INCLUDE_DATA=true` en su `.env`. El orden será Arquitectura → Datos y
-persistencia → Backend → Frontend → Pruebas → Seguridad → Chapter. Cada etapa
+`CREWAI_INCLUDE_DATA=true` en su `.env`. El orden será Product Owner → Architect → Datos y
+persistencia → AI Engineer 1 → AI Engineer 2 → QA & Security → Presenter. Cada etapa
 mantiene aprobación, rechazo y reintento humanos. Datos produce `output/specs/data_spec.md`
-y propuestas SQL en `output/db/`; no ejecuta migraciones. Backend usa ese contrato
-y Chapter lo revisa. Los participantes mejoran las instrucciones iniciales de su agente.
+y propuestas SQL en `output/db/`; no ejecuta migraciones. AI Engineer 1 usa ese contrato
+y QA & Security lo revisa. Los participantes mejoran las instrucciones iniciales de su agente.
 
 Por defecto la variable es `false`. Un checkpoint de seis etapas no se reutiliza
 en el flujo de siete ni viceversa: conserva la carpeta `output/` con otro nombre
