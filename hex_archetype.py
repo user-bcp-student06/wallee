@@ -47,7 +47,7 @@ Organiza los archivos en estas capas:
   domain/port/output/   → Interfaces hacia repos, APIs, MQ (implementadas por infra).
   application/service/  → Implementación de casos de uso. Solo depende de domain/port/.
   infrastructure/adapter/input/  → Controllers REST, CLI, listeners.
-  infrastructure/adapter/output/ → Repos JPA, HTTP clients, MQ producers.
+  infrastructure/adapter/output/ → Repos TypeORM, HTTP clients, MQ producers.
   infrastructure/config/         → Beans, properties, configuración.
 
 REGLA DE ORO: las dependencias solo van hacia adentro.

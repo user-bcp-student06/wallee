@@ -2,12 +2,12 @@
 
 Flujo:
   1. Conecta al MCP Projects → lista proyectos → elige proyecto → lista backlog → elige feature
-  2. Por cada agente (Arquitecto, Backend, Frontend, Pruebas, Seguridad, Chapter), corre un mini-Crew de un solo paso.
+  2. Por cada agente (Arquitecto, AI Engineer, Pruebas, Seguridad, Chapter), corre un mini-Crew de un solo paso.
   3. Tras cada paso muestra un preview y pide aprobación humana [s / n / r]:
        s = aprobar y continuar
        n = rechazar y abortar
        r = reintentar el mismo paso
-  4. Al aprobar: guarda el artefacto inmediatamente (spec .md / código .java .ts .sql)
+  4. Al aprobar: guarda el artefacto inmediatamente (spec .md / código .ts .tsx .sql)
      y registra el checkpoint en output/.checkpoint.json.
   5. Al volver a ejecutar: carga el checkpoint y omite los pasos ya aprobados,
      inyectando sus outputs como contexto para los pasos restantes.
@@ -16,11 +16,10 @@ Estructura generada en output/:
   .checkpoint.json        ← estado de cada paso
   specs/
     user_story.md
-    backend_spec.md
-    frontend_spec.md
+    ai_engineer_spec.md
     chapter_review.md
-  backend-quarkus/src/main/java/pe/bcp/<feature>/...
-  frontend-angular/src/app/<feature>/...
+  backend-nestjs/src/<feature>/...
+  frontend-react/src/<feature>/...
   db/schema.sql  seed.sql
 """
 import sys
@@ -61,6 +60,8 @@ from pathlib import Path
 from crewai import Crew, Process
 
 from crew.workflow import build_tasks, include_data, workflow_steps
+from crew.scaffold import ensure_scaffolding
+from crew.code_paths import FILENAME_PATTERN, feature_slug, guess_filename, resolve_destination
 from agents.architect import agent as architect_agent
 
 # ── MCP clients ────────────────────────────────────────────────────
@@ -77,322 +78,6 @@ from hex_archetype import HEX_PROMPT_PREFIX
 # False → solo confirma "Herramientas cargadas correctamente."
 VERBOSE_MCP_TOOLS = False
 
-# ── Scaffolding determinista para Backend y Frontend ────────────────
-QUARKUS_POM_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <groupId>pe.bcp</groupId>
-    <artifactId>backend-quarkus</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
-
-    <properties>
-        <compiler-plugin.version>3.12.1</compiler-plugin.version>
-        <maven.compiler.release>17</maven.compiler.release>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
-        <quarkus.platform.version>3.8.3</quarkus.platform.version>
-    </properties>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>${quarkus.platform.group-id}</groupId>
-                <artifactId>${quarkus.platform.artifact-id}</artifactId>
-                <version>${quarkus.platform.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <dependencies>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-spring-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-spring-di</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-spring-data-jpa</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-resteasy-reactive-jackson</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-hibernate-validator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-jdbc-h2</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-jdbc-postgresql</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.mindrot</groupId>
-            <artifactId>jbcrypt</artifactId>
-            <version>0.4</version>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-junit5</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>${quarkus.platform.group-id}</groupId>
-                <artifactId>quarkus-maven-plugin</artifactId>
-                <version>${quarkus.platform.version}</version>
-                <extensions>true</extensions>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>build</goal>
-                            <goal>generate-code</goal>
-                            <goal>generate-code-tests</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
-    </build>
-</project>
-"""
-
-QUARKUS_APP_PROPS_TEMPLATE = """# BCP Quarkus Backend Configuration
-quarkus.application.name=bcp-login-service
-quarkus.http.port=8080
-
-# CORS habilitado para el frontend Angular local
-quarkus.http.cors=true
-quarkus.http.cors.origins=http://localhost:4200,http://127.0.0.1:4200
-quarkus.http.cors.headers=accept, authorization, content-type, x-requested-with
-quarkus.http.cors.methods=GET, POST, PUT, DELETE, OPTIONS
-
-# Base de datos H2 en memoria para pruebas instantáneas sin configuración externa
-quarkus.datasource.db-kind=h2
-quarkus.datasource.jdbc.url=jdbc:h2:mem:logindb;DB_CLOSE_DELAY=-1
-quarkus.hibernate-orm.database.generation=drop-and-create
-quarkus.hibernate-orm.log.sql=true
-quarkus.log.level=INFO
-"""
-
-ANGULAR_PACKAGE_JSON = """{
-  "name": "frontend-angular",
-  "version": "1.0.0",
-  "scripts": {
-    "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build",
-    "watch": "ng build --watch --configuration development"
-  },
-  "private": true,
-  "dependencies": {
-    "@angular/animations": "^17.3.0",
-    "@angular/common": "^17.3.0",
-    "@angular/compiler": "^17.3.0",
-    "@angular/core": "^17.3.0",
-    "@angular/forms": "^17.3.0",
-    "@angular/platform-browser": "^17.3.0",
-    "@angular/platform-browser-dynamic": "^17.3.0",
-    "@angular/router": "^17.3.0",
-    "rxjs": "~7.8.0",
-    "tslib": "^2.3.0",
-    "zone.js": "~0.14.3"
-  },
-  "devDependencies": {
-    "@angular-devkit/build-angular": "^17.3.0",
-    "@angular/cli": "^17.3.0",
-    "@angular/compiler-cli": "^17.3.0",
-    "typescript": "~5.4.2"
-  }
-}
-"""
-
-ANGULAR_JSON = """{
-  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
-  "version": 1,
-  "newProjectRoot": "projects",
-  "projects": {
-    "frontend-angular": {
-      "projectType": "application",
-      "root": "",
-      "sourceRoot": "src",
-      "prefix": "app",
-      "architect": {
-        "build": {
-          "builder": "@angular-devkit/build-angular:application",
-          "options": {
-            "outputPath": "dist/frontend-angular",
-            "index": "src/index.html",
-            "browser": "src/main.ts",
-            "polyfills": ["zone.js"],
-            "tsConfig": "tsconfig.app.json",
-            "styles": ["src/styles.css"]
-          },
-          "configurations": {
-            "production": {
-              "outputHashing": "all"
-            },
-            "development": {
-              "optimization": false,
-              "sourceMap": true
-            }
-          },
-          "defaultConfiguration": "production"
-        },
-        "serve": {
-          "builder": "@angular-devkit/build-angular:dev-server",
-          "configurations": {
-            "production": {
-              "buildTarget": "frontend-angular:build:production"
-            },
-            "development": {
-              "buildTarget": "frontend-angular:build:development"
-            }
-          },
-          "defaultConfiguration": "development"
-        }
-      }
-    }
-  }
-}
-"""
-
-ANGULAR_TSCONFIG_JSON = """{
-  "compileOnSave": false,
-  "compilerOptions": {
-    "outDir": "./dist/out-tsc",
-    "strict": false,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "experimentalDecorators": true,
-    "moduleResolution": "node",
-    "target": "ES2022",
-    "module": "ES2022",
-    "lib": ["ES2022", "dom"]
-  }
-}
-"""
-
-ANGULAR_TSCONFIG_APP_JSON = """{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "outDir": "./out-tsc/app",
-    "types": []
-  },
-  "files": ["src/main.ts"],
-  "include": ["src/**/*.d.ts"]
-}
-"""
-
-ANGULAR_INDEX_HTML = """<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <title>BCP - Portal de Autenticación</title>
-  <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-</head>
-<body>
-  <app-root></app-root>
-</body>
-</html>
-"""
-
-ANGULAR_STYLES_CSS = """* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Inter', sans-serif;
-  background: linear-gradient(135deg, #0b1f3a 0%, #002a66 50%, #0a438c 100%);
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-"""
-
-ANGULAR_MAIN_TS = """import { bootstrapApplication } from '@angular/platform-browser';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
-import { AppComponent } from './app/app.component';
-import { routes } from './app/app.routes';
-
-bootstrapApplication(AppComponent, {
-  providers: [
-    provideRouter(routes, withComponentInputBinding()),
-    provideHttpClient(withInterceptorsFromDi())
-  ]
-}).catch(err => console.error(err));
-"""
-
-# El codigo de aplicacion (app.component.ts, app.routes.ts, el .css del
-# componente y UserRepository.java) lo genera el modelo: depende del feature.
-# Aca solo queda el andamiaje de build, que ningun agente tiene que escribir.
-
-
-def ensure_scaffolding(output_dir: Path) -> None:
-    """
-    Escribe sólo el andamiaje de build: pom.xml y application.properties de
-    Quarkus, y package.json / angular.json / tsconfig / index.html / main.ts de
-    Angular. Nada de esto describe el feature, así que no se le pide al modelo.
-
-    El código de aplicación —entidad, repositorio, servicio, componentes, rutas
-    y estilos— lo genera el agente y lo escribe extract_and_save_code(). Si el
-    agente no lo emite, el proyecto queda incompleto a propósito: es la señal
-    de que el paso falló, no algo que el andamiaje deba tapar.
-    """
-    # 1. Backend Quarkus
-    pom_path = output_dir / "backend-quarkus" / "pom.xml"
-    if not pom_path.exists():
-        pom_path.parent.mkdir(parents=True, exist_ok=True)
-        pom_path.write_text(QUARKUS_POM_TEMPLATE, encoding="utf-8")
-        print("  🏗️ Scaffolding Backend: generado pom.xml (Quarkus 3.x)")
-
-    app_props_path = output_dir / "backend-quarkus" / "src" / "main" / "resources" / "application.properties"
-    if not app_props_path.exists():
-        app_props_path.parent.mkdir(parents=True, exist_ok=True)
-        app_props_path.write_text(QUARKUS_APP_PROPS_TEMPLATE, encoding="utf-8")
-        print("  🏗️ Scaffolding Backend: generado application.properties (CORS + H2)")
-
-    # 2. Frontend Angular 17
-    front_dir = output_dir / "frontend-angular"
-    front_scaffold = {
-        "package.json": ANGULAR_PACKAGE_JSON,
-        "angular.json": ANGULAR_JSON,
-        "tsconfig.json": ANGULAR_TSCONFIG_JSON,
-        "tsconfig.app.json": ANGULAR_TSCONFIG_APP_JSON,
-        "src/index.html": ANGULAR_INDEX_HTML,
-        "src/styles.css": ANGULAR_STYLES_CSS,
-        "src/main.ts": ANGULAR_MAIN_TS,
-    }
-    created_front = 0
-    for rel_path, content in front_scaffold.items():
-        file_path = front_dir / rel_path
-        if not file_path.exists():
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(content, encoding="utf-8")
-            created_front += 1
-
-    if created_front > 0:
-        print(f"  🏗️ Scaffolding Frontend: generados {created_front} archivos base de Angular 17")
-
-
 # ── Rutas base ─────────────────────────────────────────────────────
 OUTPUT_DIR      = Path(__file__).parent / "output"
 CHECKPOINT_FILE = OUTPUT_DIR / ".checkpoint.json"
@@ -400,28 +85,8 @@ OUTPUT_DIR.mkdir(exist_ok=True)   # lo necesita save_checkpoint()
 # ensure_scaffolding() NO se llama aquí: escribiría en output/ con sólo importar
 # el módulo, antes del MCP, del feature elegido y del primer agente.
 
-# ── Mapa archivo → ruta destino ────────────────────────────────────
-FILE_MAP = {
-    "User.java":               "backend-quarkus/src/main/java/pe/bcp/login/model/User.java",
-    "LoginRequest.java":       "backend-quarkus/src/main/java/pe/bcp/login/dto/LoginRequest.java",
-    "AuthResponse.java":       "backend-quarkus/src/main/java/pe/bcp/login/dto/AuthResponse.java",
-    "AuthService.java":        "backend-quarkus/src/main/java/pe/bcp/login/service/AuthService.java",
-    "AuthResource.java":       "backend-quarkus/src/main/java/pe/bcp/login/resource/AuthResource.java",
-    "pom.xml":                 "backend-quarkus/pom.xml",
-    "application.properties":  "backend-quarkus/src/main/resources/application.properties",
-    "models.ts":               "frontend-angular/src/app/auth/models.ts",
-    "auth.service.ts":         "frontend-angular/src/app/auth/auth.service.ts",
-    "auth.guard.ts":           "frontend-angular/src/app/auth/auth.guard.ts",
-    "login.component.ts":      "frontend-angular/src/app/auth/login.component.ts",
-    "login.component.html":    "frontend-angular/src/app/auth/login.component.html",
-    "auth.interceptor.ts":     "frontend-angular/src/app/core/auth.interceptor.ts",
-    "app.component.ts":        "frontend-angular/src/app/app.component.ts",
-    "app.routes.ts":           "frontend-angular/src/app/app.routes.ts",
-    "login.component.css":     "frontend-angular/src/app/auth/login.component.css",
-    "UserRepository.java":     "backend-quarkus/src/main/java/pe/bcp/login/repository/UserRepository.java",
-    "schema.sql":              "db/schema.sql",
-    "seed.sql":                "db/seed.sql",
-}
+# Carpeta del feature para archivos sin ruta explícita; main() la fija según el feature elegido.
+FEATURE_SLUG = "feature"
 
 # ── Checkpoint ─────────────────────────────────────────────────────
 
@@ -468,9 +133,13 @@ def extract_and_save_code(text) -> list[str]:
 
     # Patrón para bloques ``` con o sin lenguaje
     code_block_pattern = re.compile(
-        r"(?:(?:archivo|file|fichero|clase|class|componente)?[:\s*#/-]*[`\"]?([a-zA-Z0-9_.\-/]+\.(?:java|ts|html|css|sql|xml|properties))[`\"]?[^\n]*\n)?"
+        r"(?:(?:archivo|file|fichero|clase|class|componente)?[:\s*#/-]*[`\"]?(" + FILENAME_PATTERN + r")[`\"]?[^\n]*\n)?"
         r"```(?:[a-zA-Z0-9_\-]+)?\n(.*?)```",
         re.DOTALL | re.IGNORECASE,
+    )
+    header_pattern = re.compile(
+        r"^\s*(?:(?:\/\/|\/\*|#|<!--|--)\s*)?(?:(?:file|archivo|path|ruta)\s*:\s*)?(" + FILENAME_PATTERN + r")",
+        re.IGNORECASE,
     )
 
     for m in code_block_pattern.finditer(text_str):
@@ -481,109 +150,25 @@ def extract_and_save_code(text) -> list[str]:
 
         target_name = name
 
-        # 1. Buscar nombre en las primeras líneas del bloque de código (incluyendo rutas con slashes)
+        # 1. Buscar la ruta o el nombre en las primeras líneas del bloque
         if not target_name:
-            lines = code.split("\n")[:5]
-            for l in lines:
-                m_line = re.search(
-                    r"(?:(?:\/\/|\/\*|#|<!--|--)\s*|\b)([a-zA-Z0-9_.\-/]+\.(?:java|ts|html|css|sql|xml|properties))\b",
-                    l,
-                    re.IGNORECASE,
-                )
+            for line in code.split("\n")[:5]:
+                m_line = header_pattern.match(line)
                 if m_line:
                     target_name = m_line.group(1)
                     break
 
-        # 2. Heurística según el contenido del código si no se detectó nombre explícito
+        # 2. Deducir el nombre desde el contenido si el bloque no lo declara
         if not target_name:
-            m_java = re.search(r"public\s+(?:class|interface|record|enum)\s+(\w+)", code)
-            if m_java:
-                target_name = f"{m_java.group(1)}.java"
-            elif "CREATE TABLE" in code.upper():
-                target_name = "schema.sql"
-            elif "INSERT INTO" in code.upper():
-                target_name = "seed.sql"
-            elif re.search(r"export\s+class\s+(\w+Component)", code) or "@Component" in code:
-                target_name = "login.component.ts"
-            elif re.search(r"export\s+class\s+(\w+Service)", code) or ("@Injectable" in code and "service" in code.lower()):
-                target_name = "auth.service.ts"
-            elif re.search(r"export\s+class\s+(\w+Guard)", code) or "CanActivate" in code:
-                target_name = "auth.guard.ts"
-            elif "HttpInterceptor" in code or "Interceptor" in code:
-                target_name = "auth.interceptor.ts"
-            elif "export interface" in code or "export type" in code:
-                target_name = "models.ts"
-            elif "<form" in code.lower() or ("<button" in code.lower() and "<div" in code.lower()):
-                target_name = "login.component.html"
+            target_name = guess_filename(code)
 
         if not target_name:
             continue
 
-        # Extraer solo el nombre base del archivo
-        target_name = Path(target_name.strip()).name
-
-        # Mapeo a ruta destino
-        dest_rel = FILE_MAP.get(target_name)
-        if not dest_rel:
-            lname = target_name.lower()
-            if target_name.endswith(".java"):
-                if "test" in lname or "@test" in code.lower():
-                    dest_rel = f"backend-quarkus/src/test/java/pe/bcp/login/{target_name}"
-                elif "service" in lname:
-                    dest_rel = f"backend-quarkus/src/main/java/pe/bcp/login/service/{target_name}"
-                elif "resource" in lname or "controller" in lname or "@path" in code.lower():
-                    dest_rel = f"backend-quarkus/src/main/java/pe/bcp/login/resource/{target_name}"
-                elif "repository" in lname or "dao" in lname:
-                    dest_rel = f"backend-quarkus/src/main/java/pe/bcp/login/repository/{target_name}"
-                elif "request" in lname or "response" in lname or "dto" in lname:
-                    dest_rel = f"backend-quarkus/src/main/java/pe/bcp/login/dto/{target_name}"
-                elif "model" in lname or "entity" in lname or "@entity" in code.lower():
-                    dest_rel = f"backend-quarkus/src/main/java/pe/bcp/login/model/{target_name}"
-                else:
-                    # Por defecto clasificar como modelo de dominio
-                    dest_rel = f"backend-quarkus/src/main/java/pe/bcp/login/model/{target_name}"
-            elif target_name.endswith(".ts"):
-                if "interceptor" in lname:
-                    dest_rel = f"frontend-angular/src/app/core/{target_name}"
-                elif "guard" in lname:
-                    dest_rel = f"frontend-angular/src/app/auth/{target_name}"
-                elif "service" in lname:
-                    dest_rel = f"frontend-angular/src/app/auth/{target_name}"
-                elif "component" in lname:
-                    dest_rel = f"frontend-angular/src/app/auth/{target_name}"
-                else:
-                    dest_rel = f"frontend-angular/src/app/auth/{target_name}"
-            elif target_name.endswith(".html"):
-                dest_rel = f"frontend-angular/src/app/auth/{target_name}"
-            elif target_name.endswith(".css"):
-                dest_rel = f"frontend-angular/src/app/auth/{target_name}"
-            elif target_name.endswith(".sql"):
-                dest_rel = f"db/{target_name}"
-            elif target_name.endswith(".properties"):
-                dest_rel = f"backend-quarkus/src/main/resources/{target_name}"
-            elif target_name == "pom.xml":
-                dest_rel = f"backend-quarkus/{target_name}"
+        dest_rel = resolve_destination(target_name, code, FEATURE_SLUG)
 
         if dest_rel and dest_rel not in seen_paths:
             seen_paths.add(dest_rel)
-
-            # Normalización automática para garantizar compilabilidad directa
-            if dest_rel.endswith("models.ts"):
-                code = re.sub(r'^(interface\s+)', r'export \1', code, flags=re.MULTILINE)
-            elif dest_rel.endswith(".java") and not re.search(r'^\s*package\s+', code, flags=re.MULTILINE):
-                if "/model/" in dest_rel:
-                    pkg = "pe.bcp.login.model"
-                elif "/service/" in dest_rel:
-                    pkg = "pe.bcp.login.service"
-                elif "/resource/" in dest_rel:
-                    pkg = "pe.bcp.login.resource"
-                elif "/repository/" in dest_rel:
-                    pkg = "pe.bcp.login.repository"
-                elif "/dto/" in dest_rel:
-                    pkg = "pe.bcp.login.dto"
-                else:
-                    pkg = "pe.bcp.login"
-                code = f"package {pkg};\n\n" + code
 
             dest = OUTPUT_DIR / dest_rel
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -920,6 +505,9 @@ def main():
     print(f"\n[MCP Proyectos] Feature cargado: {feature['title']}")
     print(f"[MCP Proyectos] Criterios de aceptación: {feature['acceptance_criteria']}")
 
+    global FEATURE_SLUG
+    FEATURE_SLUG = feature_slug(feature["title"])
+
     # ── Cargar checkpoint ─────────────────────────────────────────────
     checkpoint  = load_checkpoint()
     steps_state = checkpoint.get("steps", {})
@@ -997,10 +585,10 @@ def main():
             if ctx_note:
                 task.description = task.description + ctx_note
 
-            if with_data and step_key == "backend":
-                task.description += "\nUsa el diseño de persistencia aprobado de Datos y persistencia. No regeneres sus archivos SQL; implementa el acceso a datos según ese contrato."
+            if with_data and step_key == "ai_engineer":
+                task.description += "\nUsa el diseño de persistencia aprobado de Datos y persistencia. No regeneres sus archivos SQL; implementa el acceso a datos del backend NestJS según ese contrato."
             if with_data and step_key == "chapter":
-                task.description += "\nRevisa también el modelo, migración y compatibilidad del contrato aprobado de Datos y persistencia con backend."
+                task.description += "\nRevisa también el modelo, migración y compatibilidad del contrato aprobado de Datos y persistencia con el backend NestJS."
 
             # Si el usuario ingresó feedback opcional en un reintento, inyectarlo como directiva prioritaria
             if user_feedback:
@@ -1051,8 +639,8 @@ def main():
     print("✅ TODOS LOS PASOS APROBADOS")
     print("=" * 60)
     print("  output/specs/            → " + " · ".join(step[3] for step in steps))
-    print("  output/backend-quarkus/  → archivos .java extraídos")
-    print("  output/frontend-angular/ → archivos .ts/.html extraídos")
+    print("  output/backend-nestjs/   → archivos .ts de NestJS extraídos")
+    print("  output/frontend-react/   → archivos .ts/.tsx/.css de React extraídos")
     print("  output/db/               → .sql extraídos")
     print("=" * 60)
     print("\nVEREDICTO del Chapter (extracto):")
