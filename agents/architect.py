@@ -46,7 +46,7 @@ def build_task(feature: dict) -> Task:
     return Task(description=INSTRUCTIONS + "\n" + EPIC_CONTEXT + "\nFeature: " + str(feature.get("title", ""))
                 + "\n" + str(feature.get("description", ""))
                 + "\n" + str(feature.get("acceptance_criteria", [])),
-                expected_output=("Un user_story.md en Markdown con: 1) resumen del Issue; "
+                expected_output=("Un architect_report.md en Markdown con: 1) resumen del Issue; "
                                  "2) componentes, responsabilidades y límites del cambio; "
                                  "3) contrato de API (entradas, respuestas y errores) con ejemplos de petición y respuesta; "
                                  "4) tabla de trazabilidad criterio de aceptación → componente → forma de verificarlo; "
