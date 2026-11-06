@@ -46,6 +46,11 @@ class QaSecurityContractTests(unittest.TestCase):
                          "DECISIONES REQUERIDAS", "A quién preguntar", "Product Owner humano", "Architect"):
             self.assertIn(expected, text)
 
+    def test_instructions_read_openspec_as_the_primary_spec(self):
+        text = qa_security.INSTRUCTIONS
+        for expected in ("openspec/changes/<cambio>/", "Scenario", "tasks.md", "Fuera de alcance", "archive"):
+            self.assertIn(expected, text)
+
     def test_task_embeds_spec_discovery_and_paths(self):
         task = qa_security.build_task(FEATURE)
         self.assertIs(task.agent, qa_security.agent)
@@ -163,6 +168,94 @@ class QaSecurityContextTests(unittest.TestCase):
             context = qa_security.build_context({"title": "Transfer funds"}, root)
         self.assertIn("NO DETERMINADAS", context)
         self.assertIn("DECISIÓN REQUERIDA", context)
+
+    def test_mention_without_ac_does_not_pull_a_story_into_the_sprint(self):
+        known = {"W1": Path("a"), "W2": Path("b")}
+        stories, _ = qa_security.scope({"title": "x"}, "W2 depende de W1. Cubre W1-AC1 y W1-AC2.", known)
+        self.assertEqual(stories, ["W1"])
+
+
+def openspec_fixture(root: Path) -> None:
+    base = "openspec"
+    write(root, base + "/config.yaml", "schema: spec-driven")
+    write(root, base + "/changes/w2-pago/proposal.md", "Cubre W2-AC1 y W2-AC2. W4 depende de W2.\n\nFuera de alcance: KPI")
+    write(root, base + "/changes/w2-pago/specs/pago/spec.md",
+          "### Requirement: Monto maximo\nX\n\n#### Scenario: Monto 500\n- **WHEN** a\n- **THEN** b\n"
+          "#### Scenario: Monto 501\n- **WHEN** c\n- **THEN** d\n")
+    write(root, base + "/changes/w2-pago/tasks.md", "- [x] 1.1 hecha\n- [ ] 1.2 pendiente (W2-AC1-T1)\n- [ ] 1.3 otra")
+    write(root, base + "/changes/w2-pago/design.md", "DISENO W2")
+    write(root, base + "/changes/archive/w1-viejo/proposal.md", "CAMBIO ARCHIVADO W1-AC1")
+    write(root, base + "/specs/onboarding/spec.md", "SPEC VIGENTE ONBOARDING")
+    discovery = "challenge/docs/discovery"
+    write(root, discovery + "/06-handoff-por-rol/qa-security.md", "HANDOFF")
+    for story in ("W1-onboarding", "W2-pago", "W4-idempotencia"):
+        write(root, discovery + "/02-producto/historias/" + story + ".md", "HISTORIA " + story[:2])
+
+
+class QaSecurityOpenSpecTests(unittest.TestCase):
+    def test_active_changes_are_the_primary_spec_and_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            openspec_fixture(root)
+            context = qa_security.build_context(FEATURE, root)
+        self.assertIn("### openspec/changes/w2-pago/proposal.md", context)
+        self.assertIn("### openspec/changes/w2-pago/specs/pago/spec.md", context)
+        self.assertIn("### openspec/changes/w2-pago/tasks.md", context)
+        self.assertIn("DISENO W2", context)
+        self.assertIn("HU del sprint a probar: W2 (origen: OpenSpec: cambios activos)", context)
+        self.assertIn("1 requirements, 2 scenarios, tareas 1 hechas / 2 pendientes", context)
+        self.assertIn("HISTORIA W2", context)
+        self.assertNotIn("HISTORIA W4", context)
+        self.assertIn("Fuera del alcance del sprint (no probar): W1, W4", context)
+
+    def test_archived_changes_are_only_listed_for_minimal_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            openspec_fixture(root)
+            context = qa_security.build_context(FEATURE, root)
+        self.assertIn("Cambios archivados (sprints cerrados, solo regresión mínima): w1-viejo", context)
+        self.assertNotIn("CAMBIO ARCHIVADO", context)
+        self.assertIn("SPEC VIGENTE ONBOARDING", context)
+        self.assertIn("spec vigente, solo regresión mínima", context)
+
+    def test_new_active_change_extends_the_scope_sprint_by_sprint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            openspec_fixture(root)
+            write(root, "openspec/changes/w4-idem/proposal.md", "Cubre W4-AC1 a W4-AC3")
+            context = qa_security.build_context(FEATURE, root)
+        self.assertIn("HU del sprint a probar: W2, W4 (origen: OpenSpec", context)
+        self.assertIn("Cambio activo `w4-idem`", context)
+
+    def test_openspec_without_active_changes_asks_the_po(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "openspec/config.yaml", "schema: spec-driven")
+            write(root, "openspec/changes/archive/w1/proposal.md", "viejo")
+            context = qa_security.build_context({"title": "Transfer funds"}, root)
+        self.assertIn("OpenSpec no tiene cambios activos", context)
+        self.assertIn("SPEC PRINCIPAL NO ENCONTRADO", context)
+
+    def test_two_openspec_folders_are_ambiguous(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "a/openspec/config.yaml", "x")
+            write(root, "b/openspec/config.yaml", "y")
+            context = qa_security.build_context(FEATURE, root)
+        self.assertIn("OPENSPEC AMBIGUO", context)
+
+    def test_unrelated_openspec_named_folder_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "docs/openspec/notas.md", "no es un workspace de OpenSpec")
+            context = qa_security.build_context(FEATURE, root)
+        self.assertNotIn("OPENSPEC AMBIGUO", context)
+        self.assertNotIn("notas.md", context)
+
+    def test_real_repository_reads_the_openspec_change(self):
+        context = qa_security.build_context(FEATURE)
+        self.assertIn("### openspec/changes/w1-onboarding-guiado/tasks.md", context)
+        self.assertIn("origen: OpenSpec: cambios activos", context)
 
 
 if __name__ == "__main__":
